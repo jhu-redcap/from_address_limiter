@@ -14,7 +14,7 @@
   [
     {
       "key": "domain-list",
-      "name": "Domain List",
+      "name": "Domain List i.e.(@google.com,@yahoo.com)",
       "required": true,
       "type": "text"
     },

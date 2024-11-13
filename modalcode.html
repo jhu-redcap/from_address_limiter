@@ -1,0 +1,67 @@
+<style>
+  /* Custom modal styles */
+  .emcustom-alert-modal {
+    display: none;
+    position: fixed;
+    z-index: 2001; /* Ensure it's on top of other elements, higher than the overlay */
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    background-color: rgba(0, 0, 0, 0.8); /* Transparent background for the modal itself */
+    pointer-events: auto;
+  }
+
+  .emcustom-alert-overlay {
+    display: none;
+    position: fixed;
+    z-index: 2000; /* Directly behind the modal, but still above other elements */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
+    pointer-events: all; /* Prevent clicks to elements underneath */
+  }
+
+  .emcustom-alert-content {
+    background-color: white;
+    margin: auto;
+    padding: 20px;
+    border: 1px solid #888;
+    border-radius: 10px;
+    width: auto;
+    max-width: 500px;
+    box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+  }
+
+  .emcustom-alert-close {
+    background-color: #fdaca4;
+    color: black;
+    border: 1px solid black;
+    margin: 5px;
+    padding: 5px;
+    float: right;
+    border-radius: 50%;
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .emcustom-alert-close:hover,
+  .emcustom-alert-close:focus {
+    color: #ec0b0b;
+    text-decoration: none;
+    cursor: pointer;
+  }
+</style>
+<div id="emcustomAlertOverlay" class="emcustom-alert-overlay"></div>
+
+<div id="EMcustomAlertModal" class="emcustom-alert-modal">
+  <div class="emcustom-alert-content">
+    <span class="emcustom-alert-close">&times;</span>
+    <div id="emcustomAlertMessage"></div>
+  </div>
+</div>
