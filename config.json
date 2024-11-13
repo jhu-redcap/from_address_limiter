@@ -1,0 +1,50 @@
+{
+  "name": "From Address Limiter",
+  "description": "This is an empty module for testing purposes.",
+  "documentation": "README.md",
+  "namespace": "JHU\\fromaddresslimiter",
+  "authors": [
+    {
+      "name": "Michael Sherman Jr",
+      "email": "msherm12@jh.edu",
+      "institution": "Johns Hopkins University"
+    }
+  ],
+  "system-settings":
+  [
+    {
+      "key": "domain-list",
+      "name": "Domain List",
+      "required": true,
+      "type": "text"
+    },
+
+    {
+      "key": "action-to-take",
+      "name": "Action to take on Save button click",
+      "required": true,
+      "type": "radio",
+      "choices": [
+        {
+          "value": "Disabled",
+          "name": "Disabled"
+        },
+        {
+          "value": "Notify",
+          "name": "<span title=\"Display a notification, that when closed will continue with the Save\">Notify (warning)</span>"
+        },
+        {
+          "value": "Prevent",
+          "name": "<span title=\"Display a notification, that when closed will not perform the Save\">Prevent (block)</span>"
+        }
+      ]
+    },
+    {
+      "key": "display-message",
+      "name": "Notification message",
+      "required": true,
+      "type": "rich-text"
+    }
+  ],
+  "framework-version": 14
+}
