@@ -10,7 +10,7 @@ The module includes customizable settings for displaying an informative message 
 
 ### Features
 
-- **Restrict From Address Domains**: Administrators can define a list of forbidden email domains to prevent users from configuring email alerts with restricted domains.
+- **Restrict From Address Domains**: Administrators can define a list of restricted email domains to prevent users from configuring email alerts with restricted domains.
 - **Modal Alerts**: A modal alert is displayed if a user attempts to use a restricted email domain. The modal is designed to be truly modal, meaning no other actions can be performed until it is dismissed by the user.
 
 ## Usage
