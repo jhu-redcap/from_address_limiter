@@ -531,9 +531,223 @@
             </script>
 			<?php
 		}
-		
+        private function handleOnlineDesigner()
+        {
+            $domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
+            $actionToTake = $this->getSystemSetting('action-to-take');
+            $actionToTake = ($actionToTake === null || $actionToTake === '') ? 'Disabled' : $actionToTake;
+
+            if ($actionToTake === 'Disabled' || $domainlist === '') {
+                return;
+            }
+
+            $defaultDisplayMessage =
+                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
+                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
+                    'in emails being blocked by the receiving email domain due to "spoofing".';
+
+            $displaymessage_raw = $this->getSystemSetting('display-message');
+            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
+                $displaymessage = $defaultDisplayMessage;
+            } else {
+                $displaymessage = $this->cleanRichText($displaymessage_raw);
+            }
+
+            $this->initializeJavascriptModuleObject();
+            include('modalcode.html');
+            ?>
+
+            <style>
+                #emcustomAlertOverlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    z-index: 9998;
+                    display: none;
+                }
+
+                #EMcustomAlertModal {
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 9999;
+                    background: white;
+                    padding: 20px;
+                    box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.3);
+                    display: none;
+                }
+            </style>
+
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    console.log('Online Designer script loaded');
+
+                    let shouldExecuteOriginal = false;
+                    let lastClickedButton = null;
+
+                    function decodeHtml(html) {
+                        var txt = document.createElement('textarea');
+                        txt.innerHTML = html;
+                        return txt.value;
+                    }
+
+                    function EmailValidationCheck(emailFromValue) {
+                        if (!emailFromValue || typeof emailFromValue !== 'string') return false;
+
+                        const atPos = emailFromValue.lastIndexOf('@');
+                        if (atPos <= 0 || atPos === emailFromValue.length - 1) return false;
+
+                        const emailDomain = emailFromValue.slice(atPos + 1).trim().toLowerCase();
+
+                        let domainlist = <?= json_encode($domainlist) ?>;
+                        let domains = domainlist
+                            .split(',')
+                            .map(d => d.trim().toLowerCase())
+                            .filter(Boolean)
+                            .map(d => {
+                                const i = d.lastIndexOf('@');
+                                if (i >= 0) d = d.slice(i + 1);
+                                return d.replace(/^@+/, '');
+                            });
+
+                        console.log('online designer domains(normalized)', domains);
+                        console.log('online designer emailDomain(normalized)', emailDomain);
+
+                        return domains.includes(emailDomain);
+                    }
+
+                    function showModal(displaymessage, failedEmail) {
+                        let emailDisplay = failedEmail
+                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">Failed Email: ${failedEmail}</p>`
+                            : '';
+
+                        $('#emcustomAlertMessage').html(emailDisplay + displaymessage);
+                        $('#emcustomAlertOverlay').show();
+                        $('#EMcustomAlertModal').show().focus();
+                        $('body').addClass('no-scroll');
+                    }
+
+                    function closeModal() {
+                        $('#EMcustomAlertModal').hide();
+                        $('#emcustomAlertOverlay').hide();
+                        $('body').removeClass('no-scroll');
+                    }
+
+                    function attachClickHandler(button) {
+                        if (!button) return;
+
+                        const $button = $(button);
+                        if ($button.data('emFromLimiterBound')) return;
+                        $button.data('emFromLimiterBound', true);
+
+                        console.log('Attaching click handler to button:', button);
+
+                        button.addEventListener('click', function (event) {
+                            clickHandlerWrapper(event, button);
+                        }, true);
+                    }
+
+                    function attachPopupButtonHandlers() {
+                        const popupDiv = document.getElementById('popupSetUpCondInvites');
+                        if (!popupDiv) {
+                            console.error('Popup div not found');
+                            return;
+                        }
+
+                        console.log('Popup div found, directly attaching handlers');
+
+                        let secondaryButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget ui-priority-primary fs15 me-4')[0];
+                        let savecopyButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget fs15')[1];
+
+                        attachClickHandler(secondaryButton);
+                        attachClickHandler(savecopyButton);
+                    }
+
+                    function clickHandlerWrapper(event, button) {
+                        console.log('Click handler wrapper triggered');
+
+                        if (!shouldExecuteOriginal) {
+                            lastClickedButton = button;
+
+                            let emailFromValue = $('select[id="email_sender"]').val();
+                            let actionToTake = <?= json_encode($actionToTake) ?>;
+                            let displaymessage = <?= json_encode($displaymessage) ?>;
+                            let checksPassed = EmailValidationCheck(emailFromValue);
+
+                            console.log('online designer emailfromvalue', emailFromValue);
+                            console.log('online designer checksPassed', checksPassed);
+
+                            if (checksPassed === false) {
+                                console.log('Email validation failed');
+                                event.preventDefault();
+                                event.stopImmediatePropagation();
+
+                                if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
+                                    showModal(decodeHtml(displaymessage), emailFromValue);
+                                }
+                                return;
+                            }
+
+                            shouldExecuteOriginal = true;
+                        }
+                    }
+
+                    // WITH EVENTS
+                    const mainButton = document.getElementById('choose_event_div_list');
+                    if (mainButton) {
+                        mainButton.addEventListener('click', function () {
+                            console.log('Main button clicked (events project)');
+                            setTimeout(function () {
+                                attachPopupButtonHandlers();
+                            }, 3000);
+                        });
+                    }
+
+                    // WITHOUT EVENTS
+                    $(document).on('click', 'button[id^="autoInviteBtn-"]', function () {
+                        console.log('Automated Invitations button clicked (non-events project):', this.id);
+                        setTimeout(function () {
+                            attachPopupButtonHandlers();
+                        }, 3000);
+                    });
+
+                    $('.emcustom-alert-close')
+                        .off('click.emFromLimiterOnlineDesigner')
+                        .on('click.emFromLimiterOnlineDesigner', function () {
+                            console.log('Close button clicked');
+                            closeModal();
+
+                            if (<?= json_encode($actionToTake) ?> === 'Notify' && lastClickedButton) {
+                                shouldExecuteOriginal = true;
+                                try {
+                                    lastClickedButton.click();
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                    lastClickedButton = null;
+                                }
+                            }
+
+                            if (<?= json_encode($actionToTake) ?> === 'Prevent') {
+                                shouldExecuteOriginal = false;
+                                lastClickedButton = null;
+                            }
+                        });
+
+                    $('#emcustomAlertOverlay')
+                        .off('click.emFromLimiterOnlineDesigner')
+                        .on('click.emFromLimiterOnlineDesigner', function () {
+                            return false;
+                        });
+                });
+            </script>
+            <?php
+        }
 		// Function handling Online Designer setup
-		private function handleOnlineDesigner()
+		private function handleOnlineDesigner_orig()
 		{
 			$domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
 			$actionToTake = $this->getSystemSetting('action-to-take');
