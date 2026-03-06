@@ -271,7 +271,9 @@
             if (PAGE == 'Surveys/invite_participants.php' && isset($_GET['participant_list']) && $_GET['participant_list'] == '1') { // participant list tab open
                 $this->handleInviteParticipantsParticipantList();
             }
-
+            if (PAGE == 'SendItController:upload') {
+                $this->handleSendItUpload();
+            }
 
 		}
 		
@@ -897,6 +899,145 @@
                 });
             </script>
 
+            <?php
+        }
+        private function handleSendItUpload()
+        {
+            $domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
+
+            $actionToTake = $this->getSystemSetting('action-to-take');
+            $actionToTake = ($actionToTake === null || $actionToTake === '') ? 'Disabled' : $actionToTake;
+
+            if ($actionToTake === 'Disabled' || $domainlist === '') {
+                return;
+            }
+
+            $defaultDisplayMessage =
+                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
+                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
+                    'in emails being blocked by the receiving email domain due to "spoofing".';
+
+            $displaymessage_raw = $this->getSystemSetting('display-message');
+
+            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
+                $displaymessage = $defaultDisplayMessage;
+            } else {
+                $displaymessage = $this->cleanRichText($displaymessage_raw);
+            }
+
+            $this->initializeJavascriptModuleObject();
+            include('modalcode.html');
+            ?>
+            <script>
+                $(function(){
+
+                    console.log('SendItController:upload interception script loaded');
+
+                    const actionToTake   = <?= json_encode($actionToTake) ?>;
+                    const displaymessage = <?= json_encode($displaymessage) ?>;
+                    const domainlist     = <?= json_encode($domainlist) ?>;
+
+                    let shouldExecuteOriginal = false;
+
+                    function decodeHtml(html) {
+                        const txt = document.createElement('textarea');
+                        txt.innerHTML = html;
+                        return txt.value;
+                    }
+
+                    function EmailValidationCheck(emailFromValue) {
+                        if (!emailFromValue || typeof emailFromValue !== 'string') return false;
+
+                        const atPos = emailFromValue.lastIndexOf('@');
+                        if (atPos <= 0 || atPos === emailFromValue.length - 1) return false;
+
+                        const emailDomain = emailFromValue.slice(atPos + 1).trim().toLowerCase();
+
+                        const domains = domainlist
+                            .split(',')
+                            .map(d => d.trim().toLowerCase())
+                            .filter(Boolean)
+                            .map(d => {
+                                const i = d.lastIndexOf('@');
+                                if (i >= 0) d = d.slice(i + 1);
+                                d = d.replace(/^@+/, '');
+                                return d;
+                            });
+
+                        console.log('domains(normalized)', domains);
+                        console.log('emailDomain(normalized)', emailDomain);
+
+                        return domains.includes(emailDomain);
+                    }
+
+                    function showModal(msg, failedEmail) {
+                        const emailDisplay = failedEmail
+                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">
+               Failed Email: ${failedEmail}
+               </p>`
+                            : '';
+
+                        $('#emcustomAlertMessage').html(emailDisplay + msg);
+                        $('#emcustomAlertOverlay').show();
+                        $('#EMcustomAlertModal').show().focus();
+                        $('body').addClass('no-scroll');
+                    }
+
+                    function closeModal() {
+                        $('#emcustomAlertOverlay').hide();
+                        $('#EMcustomAlertModal').hide();
+                        $('body').removeClass('no-scroll');
+                    }
+
+                    $('#submit')
+                        .off('click.emFromLimiterSendIt')
+                        .on('click.emFromLimiterSendIt', function(e){
+
+                            if (shouldExecuteOriginal) return true;
+
+                            const emailFromValue = $('#emailFrom option:selected').text().trim();
+                            const ok = EmailValidationCheck(emailFromValue);
+
+                            console.log('SendIt emailFromValue', emailFromValue);
+                            console.log('SendIt ok', ok);
+
+                            if (!ok) {
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+
+                                if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
+                                    showModal(decodeHtml(displaymessage), emailFromValue);
+                                }
+
+                                return false;
+                            }
+
+                            return true;
+                        });
+
+                    $('.emcustom-alert-close')
+                        .off('click.emFromLimiterSendIt')
+                        .on('click.emFromLimiterSendIt', function(){
+                            closeModal();
+
+                            if (actionToTake === 'Notify') {
+                                shouldExecuteOriginal = true;
+                                try {
+                                    $('#submit').trigger('click');
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                }
+                            }
+                        });
+
+                    $('#emcustomAlertOverlay')
+                        .off('click.emFromLimiterSendIt')
+                        .on('click.emFromLimiterSendIt', function () {
+                            return false;
+                        });
+
+                });
+            </script>
             <?php
         }
 	}

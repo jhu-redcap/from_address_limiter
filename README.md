@@ -41,6 +41,9 @@ The module currently performs validation in the following locations:
 - Triggered when sending invitations from the participant list
 - The module validates the selected **From Address** when the user clicks **Send Invitations**
 
+#### Send-It File Transfer → **Send data file (raw)**
+- Triggered when a user sends a data export using the **Send-It** feature
+- The module validates the selected **From Address** when the user clicks **Send It!**
 ---
 
 ### Module Behavior
