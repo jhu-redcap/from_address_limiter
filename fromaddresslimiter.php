@@ -131,7 +131,7 @@
                     function showModal(msg, failedEmail) {
                         const emailDisplay = failedEmail
                             ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">
-             Failed Email: ${failedEmail}
+             Invalid "From" Address: ${failedEmail}
            </p>`
                             : '';
 
@@ -378,7 +378,7 @@
 
                     function showModal(displaymessage, failedEmail) {
                         let emailDisplay = failedEmail
-                            ? `<p style="background-color: #ffcccc; color: #b22222; padding: 8px; border-left: 4px solid #b22222; border-radius: 4px; font-weight: bold; margin-bottom: 5px;">Failed Email: ${failedEmail}</p>`
+                            ? `<p style="background-color: #ffcccc; color: #b22222; padding: 8px; border-left: 4px solid #b22222; border-radius: 4px; font-weight: bold; margin-bottom: 5px;">Invalid "From" Address: ${failedEmail}</p>`
                             : '';
 
                         $('#emcustomAlertMessage').html(emailDisplay + displaymessage);
@@ -542,9 +542,9 @@
             }
 
             $defaultDisplayMessage =
-                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
-                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
-                    'in emails being blocked by the receiving email domain due to "spoofing".';
+                    'The selected "From" address must be associated with the institution hosting REDCap. ' .
+                    'Using an email address from outside the hosting institution as a "From" address will result ' .
+                    'in emails being blocked by the recipient\'s email host (treated as "spoofing").';
 
             $displaymessage_raw = $this->getSystemSetting('display-message');
             if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
@@ -622,7 +622,7 @@
 
                     function showModal(displaymessage, failedEmail) {
                         let emailDisplay = failedEmail
-                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">Failed Email: ${failedEmail}</p>`
+                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">Invalid "From" Address: ${failedEmail}</p>`
                             : '';
 
                         $('#emcustomAlertMessage').html(emailDisplay + displaymessage);
@@ -990,7 +990,7 @@
                     function showModal(msg, failedEmail) {
                         const emailDisplay = failedEmail
                             ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">
-                         Failed Email: ${failedEmail}
+                         Invalid "From" Address: ${failedEmail}
                        </p>`
                             : '';
 
@@ -1187,7 +1187,7 @@
                     function showModal(msg, failedEmail) {
                         const emailDisplay = failedEmail
                             ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">
-               Failed Email: ${failedEmail}
+               Invalid "From" Address: ${failedEmail}
                </p>`
                             : '';
 
