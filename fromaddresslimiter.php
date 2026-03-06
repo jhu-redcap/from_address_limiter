@@ -7,13 +7,19 @@
 	
 	class fromaddresslimiter extends AbstractExternalModule
 	{
-		function cleanDomainList($dlist)
-		{
-			$workingList = str_replace(';', ',', $dlist);
-			$workingList = array_filter(array_map('trim', explode(',', $workingList)));
-			$cleanList = implode(',', $workingList);
-			return $cleanList;
-		}
+        function cleanDomainList($dlist)
+        {
+            // Treat null/empty/whitespace-only as "no list"
+            if ($dlist === null || trim((string)$dlist) === '') {
+                return '';
+            }
+
+            $workingList = str_replace(';', ',', $dlist);
+            $workingList = array_filter(array_map('trim', explode(',', $workingList)));
+
+            // Re-index and join
+            return implode(',', $workingList);
+        }
 		
 		function cleanRichText($text)
 		{
@@ -21,7 +27,237 @@
 			$displaymessage = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
 			return $displaymessage;
 		}
-		
+
+        public function redcap_data_entry_form($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
+        {
+            // Pull config the same way you do elsewhere
+            $domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
+
+            $actionToTake = $this->getSystemSetting('action-to-take');
+            $actionToTake = ($actionToTake === null || $actionToTake === '') ? 'Disabled' : $actionToTake;
+
+            // Exit if disabled OR if no domains configured
+            if ($actionToTake === 'Disabled' || $domainlist === '') {
+                return;
+            }
+
+            $defaultDisplayMessage =
+                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
+                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
+                    'in emails being blocked by the receiving email domain due to "spoofing".';
+
+            $displaymessage_raw = $this->getSystemSetting('display-message');
+            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
+                $displaymessage = $defaultDisplayMessage;
+            } else {
+                $displaymessage = $this->cleanRichText($displaymessage_raw);
+            }
+
+            // Ensure modal HTML + module object exist on data entry pages too
+            $this->initializeJavascriptModuleObject();
+            include('modalcode.html');
+            ?>
+
+            <style>
+                #emcustomAlertOverlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    z-index: 9998;
+                    display: none;
+                }
+
+                #EMcustomAlertModal {
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 9999;
+                    background: white;
+                    padding: 20px;
+                    box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.3);
+                    display: none;
+                }
+            </style>
+
+            <script>
+                $(function () {
+                    console.log('Data Entry interception script loaded');
+
+                    const actionToTake   = <?= json_encode($actionToTake) ?>;
+                    const displaymessage = <?= json_encode($displaymessage) ?>;
+                    const domainlist     = <?= json_encode($domainlist) ?>;
+
+                    let originalSendHandler = null;
+                    let shouldExecuteOriginal = false;
+
+                    function decodeHtml(html) {
+                        const txt = document.createElement('textarea');
+                        txt.innerHTML = html;
+                        return txt.value;
+                    }
+
+                    // Normalizes configured domains like "@jhmi.edu" -> "jhmi.edu" and compares to email domain.
+                    function EmailValidationCheck(emailFromValue) {
+                        if (!emailFromValue || typeof emailFromValue !== 'string') return false;
+
+                        const atPos = emailFromValue.lastIndexOf('@');
+                        if (atPos <= 0 || atPos === emailFromValue.length - 1) return false;
+
+                        const emailDomain = emailFromValue.slice(atPos + 1).trim().toLowerCase();
+
+                        const domains = domainlist
+                            .split(',')
+                            .map(d => d.trim().toLowerCase())
+                            .filter(Boolean)
+                            .map(d => {
+                                // If admin pasted an email, take just the domain part
+                                const i = d.lastIndexOf('@');
+                                if (i >= 0) d = d.slice(i + 1);
+                                // Remove any leading "@"
+                                d = d.replace(/^@+/, '');
+                                return d;
+                            });
+
+                        console.log('domains(normalized)', domains);
+                        console.log('emailDomain(normalized)', emailDomain);
+
+                        return domains.includes(emailDomain);
+                    }
+
+                    function showModal(msg, failedEmail) {
+                        const emailDisplay = failedEmail
+                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">
+             Failed Email: ${failedEmail}
+           </p>`
+                            : '';
+
+                        $('#emcustomAlertMessage').html(emailDisplay + msg);
+                        $('#emcustomAlertOverlay').show();
+                        $('#EMcustomAlertModal').show().focus();
+                        $('body').addClass('no-scroll');
+                    }
+
+                    function closeModal() {
+                        $('#emcustomAlertOverlay').hide();
+                        $('#EMcustomAlertModal').hide();
+                        $('body').removeClass('no-scroll');
+                    }
+
+                    // Optional log
+                    $(document).on('click', '#surveyoption-composeInvite', function () {
+                        console.log('Compose survey invitation clicked');
+                    });
+
+                    // Attach/replace handler once the button exists (dialog is dynamic)
+                    function replaceSendInvitationHandler() {
+                        const $btn = $('#sendInvitationBtn');
+                        if ($btn.length === 0) return;
+
+                        // Guard: don't keep rebinding the same button instance
+                        if ($btn.data('emFromLimiterBound')) return;
+                        $btn.data('emFromLimiterBound', true);
+
+                        // Capture existing click handler(s) once
+                        if (originalSendHandler === null) {
+                            const events = $._data($btn[0], 'events');
+                            if (events && events.click && events.click.length) {
+                                // Usually safest to take the last handler
+                                originalSendHandler = events.click[events.click.length - 1].handler;
+                            }
+                        }
+
+                        // Remove all click handlers so we fully control what happens
+                        $btn.off('click');
+
+                        // Add our wrapper
+                        $btn.on('click.emFromLimiter', function (e) {
+                            if (shouldExecuteOriginal) return;
+
+                            // Stop everything by default; we will call original handler manually when allowed
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+
+                            const emailFromValue = $('#followupSurvEmailFrom').val();
+                            const ok = EmailValidationCheck(emailFromValue);
+
+                            console.log('emailfromvalue', emailFromValue);
+                            console.log('ok', ok);
+
+                            if (!ok) {
+                                if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
+                                    showModal(decodeHtml(displaymessage), emailFromValue);
+                                }
+                                // Prevent: do not proceed
+                                // Notify: proceed only when modal is closed (see close handler below)
+                                return false;
+                            }
+
+                            // Valid: proceed immediately
+                            if (typeof originalSendHandler === 'function') {
+                                shouldExecuteOriginal = true;
+                                try {
+                                    originalSendHandler.call(this, e);
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                }
+                            } else {
+                                // Rare fallback: if we couldn't capture handler, try a direct click once
+                                shouldExecuteOriginal = true;
+                                try {
+                                    this.click();
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                }
+                            }
+                        });
+
+                        console.log('Replaced click handler for #sendInvitationBtn');
+                    }
+
+                    // Observe DOM changes because dialog content is inserted dynamically
+                    const observer = new MutationObserver(function () {
+                        replaceSendInvitationHandler();
+                    });
+                    observer.observe(document.body, { childList: true, subtree: true });
+
+                    // Also attempt immediately (in case dialog/button is already present)
+                    replaceSendInvitationHandler();
+
+                    // Close button: Notify continues; Prevent does nothing
+                    $('.emcustom-alert-close')
+                        .off('click.emFromLimiterDataEntry')
+                        .on('click.emFromLimiterDataEntry', function () {
+                            closeModal();
+
+                            if (actionToTake === 'Notify') {
+                                const $btn = $('#sendInvitationBtn');
+                                if ($btn.length && typeof originalSendHandler === 'function') {
+                                    shouldExecuteOriginal = true;
+                                    try {
+                                        originalSendHandler.call($btn[0]);
+                                    } finally {
+                                        shouldExecuteOriginal = false;
+                                    }
+                                }
+                            }
+                        });
+
+                    // Prevent closing by clicking overlay (matches your existing behavior)
+                    $('#emcustomAlertOverlay')
+                        .off('click.emFromLimiterDataEntry')
+                        .on('click.emFromLimiterDataEntry', function () {
+                            return false;
+                        });
+                });
+            </script>
+
+            <?php
+        }
+
 		public function redcap_every_page_top($project_id)
 		{
 			if (PAGE == 'AlertsController:setup') {
@@ -32,19 +268,38 @@
 				// Separate handler for the Design/online_designer.php page
 				$this->handleOnlineDesigner();
 			}
+            if (PAGE == 'Surveys/invite_participants.php' && isset($_GET['participant_list']) && $_GET['participant_list'] == '1') { // participant list tab open
+                $this->handleInviteParticipantsParticipantList();
+            }
+
+
 		}
 		
 		// Function handling AlertsController setup
 		private function handleAlertsControllerSetup()
 		{
 			$domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
+
 			$actionToTake = $this->getSystemSetting('action-to-take');
 			$actionToTake = ($actionToTake === null || $actionToTake === '') ? 'Disabled' : $actionToTake;
-			
-			if ($actionToTake == 'Disabled') {
-				return;
-			}
-			$displaymessage = $this->cleanRichText($this->getSystemSetting('display-message'));
+
+            // Exit if disabled OR if no domains configured
+            if ($actionToTake === 'Disabled' || $domainlist === '') {
+                return;
+            }
+
+            $defaultDisplayMessage =
+                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
+                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
+                    'in emails being blocked by the receiving email domain due to "spoofing".';
+
+            $displaymessage_raw = $this->getSystemSetting('display-message');
+            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
+                $displaymessage = $defaultDisplayMessage;
+            } else {
+                $displaymessage = $this->cleanRichText($displaymessage_raw);
+            }
+
 			$this->initializeJavascriptModuleObject();
 			include('modalcode.html');
 			?>
@@ -102,7 +357,7 @@
                                     }
                                     if (customCheck === false) {
                                         if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
-                                            showModal(decodeHtml(displaymessage));
+                                            showModal(decodeHtml(displaymessage),emailFromValue);
                                         }
                                     } else {
                                         originalClickHandler.call(this); // If checks are passed, run the original click event
@@ -114,10 +369,16 @@
                         }
                     }
 
-                    function showModal(displaymessage) {
-                        console.log('Showing modal with message:', displaymessage);
-                        $('#emcustomAlertMessage').html(displaymessage);
-                        $('#emcustomAlertOverlay').show();  // Show overlay to prevent background interaction
+                    function showModal(displaymessage, failedEmail) {
+
+
+                        let emailDisplay = failedEmail
+                            ? `<p style="background-color: #ffcccc; color: #b22222; padding: 8px; border-left: 4px solid #b22222; border-radius: 4px; font-weight: bold; margin-bottom: 5px;">Failed Email: ${failedEmail}</p>`
+                            : '';
+
+                        $('#emcustomAlertMessage').html(emailDisplay + displaymessage);
+
+                        $('#emcustomAlertOverlay').show();
                         $('#EMcustomAlertModal').show().focus();
 
                         // Prevent body scroll when modal is open
@@ -160,6 +421,7 @@
                         let emailDomain = emailFromValue.split('@')[1];
                         return domains.includes(emailDomain);
                     }
+                    
 
                     var observer = new MutationObserver(function (mutations) {
                         mutations.forEach(function (mutation) {
@@ -325,6 +587,7 @@
                             let actionToTake = '<?= $actionToTake ?>';
                             let displaymessage = '<?= $displaymessage ?>';
                             let checksPassed = EmailValidationCheck(emailFromValue);
+                            console.log('checksPassed',checksPassed);
                             function decodeHtml(html) {
                                 var txt = document.createElement('textarea');
                                 txt.innerHTML = html;
@@ -356,4 +619,228 @@
             </script>
 			<?php
 		}
+        private function handleInviteParticipantsParticipantList()
+        {
+            $domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
+
+            $actionToTake = $this->getSystemSetting('action-to-take');
+            $actionToTake = ($actionToTake === null || $actionToTake === '') ? 'Disabled' : $actionToTake;
+
+            // Exit if disabled OR if no domains configured
+            if ($actionToTake === 'Disabled' || $domainlist === '') {
+                return;
+            }
+
+            $defaultDisplayMessage =
+                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
+                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
+                    'in emails being blocked by the receiving email domain due to "spoofing".';
+
+            $displaymessage_raw = $this->getSystemSetting('display-message');
+            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
+                $displaymessage = $defaultDisplayMessage;
+            } else {
+                $displaymessage = $this->cleanRichText($displaymessage_raw);
+            }
+
+            $this->initializeJavascriptModuleObject();
+            include('modalcode.html');
+            ?>
+
+            <style>
+                #emcustomAlertOverlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    z-index: 9998;
+                    display: none;
+                }
+
+                #EMcustomAlertModal {
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 9999;
+                    background: white;
+                    padding: 20px;
+                    box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.3);
+                    display: none;
+                }
+            </style>
+
+            <script>
+                $(function () {
+                    console.log('Invite Participants participant list interception script loaded');
+
+                    const actionToTake   = <?= json_encode($actionToTake) ?>;
+                    const displaymessage = <?= json_encode($displaymessage) ?>;
+                    const domainlist     = <?= json_encode($domainlist) ?>;
+
+                    let originalSendInvitationsHandler = null;
+                    let shouldExecuteOriginal = false;
+                    let activeSendInvitationsButton = null;
+
+                    function decodeHtml(html) {
+                        const txt = document.createElement('textarea');
+                        txt.innerHTML = html;
+                        return txt.value;
+                    }
+
+                    function EmailValidationCheck(emailFromValue) {
+                        if (!emailFromValue || typeof emailFromValue !== 'string') return false;
+
+                        const atPos = emailFromValue.lastIndexOf('@');
+                        if (atPos <= 0 || atPos === emailFromValue.length - 1) return false;
+
+                        const emailDomain = emailFromValue.slice(atPos + 1).trim().toLowerCase();
+
+                        const domains = domainlist
+                            .split(',')
+                            .map(d => d.trim().toLowerCase())
+                            .filter(Boolean)
+                            .map(d => {
+                                const i = d.lastIndexOf('@');
+                                if (i >= 0) d = d.slice(i + 1);
+                                d = d.replace(/^@+/, '');
+                                return d;
+                            });
+
+                        console.log('domains(normalized)', domains);
+                        console.log('emailDomain(normalized)', emailDomain);
+
+                        return domains.includes(emailDomain);
+                    }
+
+                    function showModal(msg, failedEmail) {
+                        const emailDisplay = failedEmail
+                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">
+                         Failed Email: ${failedEmail}
+                       </p>`
+                            : '';
+
+                        $('#emcustomAlertMessage').html(emailDisplay + msg);
+                        $('#emcustomAlertOverlay').show();
+                        $('#EMcustomAlertModal').show().focus();
+                        $('body').addClass('no-scroll');
+                    }
+
+                    function closeModal() {
+                        $('#emcustomAlertOverlay').hide();
+                        $('#EMcustomAlertModal').hide();
+                        $('body').removeClass('no-scroll');
+                    }
+
+                    function getInviteDialog() {
+                        // The uploaded HTML shows the compose dialog content container is #emailPart
+                        return $('#emailPart').closest('.ui-dialog');
+                    }
+
+                    function findSendInvitationsButton() {
+                        const $dialog = getInviteDialog();
+                        if ($dialog.length === 0) return $();
+
+                        // The uploaded HTML shows the Send Invitations button is in .ui-dialog-buttonpane
+                        return $dialog.find('.ui-dialog-buttonpane button.ui-button').filter(function () {
+                            return $(this).text().trim() === 'Send Invitations';
+                        }).first();
+                    }
+
+                    function replaceSendInvitationsHandler() {
+                        const $btn = findSendInvitationsButton();
+                        if ($btn.length === 0) return;
+
+                        // Only bind once per button instance
+                        if ($btn.data('emFromLimiterBound')) return;
+                        $btn.data('emFromLimiterBound', true);
+
+                        // Capture existing click handler once
+                        if (originalSendInvitationsHandler === null) {
+                            const events = $._data($btn[0], 'events');
+                            if (events && events.click && events.click.length) {
+                                originalSendInvitationsHandler = events.click[events.click.length - 1].handler;
+                            }
+                        }
+
+                        // Remove all click handlers so we control execution
+                        $btn.off('click');
+
+                        $btn.on('click.emFromLimiter', function (e) {
+                            if (shouldExecuteOriginal) return;
+
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+
+                            activeSendInvitationsButton = this;
+
+                            const emailFromValue = $('#emailFrom').val();
+                            const ok = EmailValidationCheck(emailFromValue);
+
+                            console.log('participant list emailfromvalue', emailFromValue);
+                            console.log('participant list ok', ok);
+
+                            if (!ok) {
+                                if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
+                                    showModal(decodeHtml(displaymessage), emailFromValue);
+                                }
+                                return false;
+                            }
+
+                            if (typeof originalSendInvitationsHandler === 'function') {
+                                shouldExecuteOriginal = true;
+                                try {
+                                    originalSendInvitationsHandler.call(this, e);
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                }
+                            } else {
+                                shouldExecuteOriginal = true;
+                                try {
+                                    this.click();
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                }
+                            }
+                        });
+
+                        console.log('Replaced click handler for participant list Send Invitations button');
+                    }
+
+                    const observer = new MutationObserver(function () {
+                        replaceSendInvitationsHandler();
+                    });
+
+                    observer.observe(document.body, { childList: true, subtree: true });
+
+                    replaceSendInvitationsHandler();
+
+                    $('.emcustom-alert-close')
+                        .off('click.emFromLimiterInviteParticipants')
+                        .on('click.emFromLimiterInviteParticipants', function () {
+                            closeModal();
+
+                            if (actionToTake === 'Notify' && activeSendInvitationsButton && typeof originalSendInvitationsHandler === 'function') {
+                                shouldExecuteOriginal = true;
+                                try {
+                                    originalSendInvitationsHandler.call(activeSendInvitationsButton);
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                    activeSendInvitationsButton = null;
+                                }
+                            }
+                        });
+
+                    $('#emcustomAlertOverlay')
+                        .off('click.emFromLimiterInviteParticipants')
+                        .on('click.emFromLimiterInviteParticipants', function () {
+                            return false;
+                        });
+                });
+            </script>
+
+            <?php
+        }
 	}
