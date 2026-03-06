@@ -332,46 +332,49 @@
             <script>
                 $(document).ready(function () {
                     console.log('AlertsController:setup script loaded');
+
                     let originalClickHandler = null;
-                    const module = <?=$this->getJavascriptModuleObjectName()?>;
+                    let shouldExecuteOriginal = false;
 
-                    function replaceClickHandler() {
-                        let $btn = $('#btnModalsaveAlert');
-                        if ($btn.length > 0 && $btn.is(':visible')) {
-                            let events = $._data($btn[0], 'events');
-                            let handlerExists = events && events.click;
-                            if (handlerExists && originalClickHandler === null) {
-                                originalClickHandler = events.click[0].handler; // Copy the click event only once
-                                $btn.off('click'); // Turn off the original click
+                    const actionToTake = <?= json_encode($actionToTake) ?>;
+                    const displaymessage = <?= json_encode($displaymessage) ?>;
+                    const domainlist = <?= json_encode($domainlist) ?>;
 
-                                $btn.click(function () {
-                                    console.log('Save Alert button clicked');
-                                    let emailFromValue = $('select[name="email-from"]').val();
-                                    let actionToTake = '<?= $actionToTake ?>';
-                                    let displaymessage = '<?= $displaymessage ?>';
-                                    let customCheck = EmailValidationCheck(emailFromValue);
-                                    function decodeHtml(html) {
-                                        var txt = document.createElement('textarea');
-                                        txt.innerHTML = html;
-                                        return txt.value;
-                                    }
-                                    if (customCheck === false) {
-                                        if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
-                                            showModal(decodeHtml(displaymessage),emailFromValue);
-                                        }
-                                    } else {
-                                        originalClickHandler.call(this); // If checks are passed, run the original click event
-                                    }
-                                });
+                    function decodeHtml(html) {
+                        const txt = document.createElement('textarea');
+                        txt.innerHTML = html;
+                        return txt.value;
+                    }
 
-                                observer.disconnect();
-                            }
-                        }
+                    function EmailValidationCheck(emailFromValue) {
+                        if (!emailFromValue || typeof emailFromValue !== 'string') return false;
+
+                        const atPos = emailFromValue.lastIndexOf('@');
+                        if (atPos <= 0 || atPos === emailFromValue.length - 1) return false;
+
+                        const emailDomain = emailFromValue.slice(atPos + 1).trim().toLowerCase();
+
+                        const domains = domainlist
+                            .split(',')
+                            .map(d => d.trim().toLowerCase())
+                            .filter(Boolean)
+                            .map(d => {
+                                // If someone entered a full email into the domain list, keep only the domain
+                                const i = d.lastIndexOf('@');
+                                if (i >= 0) d = d.slice(i + 1);
+
+                                // Remove any leading @ symbols
+                                d = d.replace(/^@+/, '');
+                                return d;
+                            });
+
+                        console.log('alerts domains(normalized)', domains);
+                        console.log('alerts emailDomain(normalized)', emailDomain);
+
+                        return domains.includes(emailDomain);
                     }
 
                     function showModal(displaymessage, failedEmail) {
-
-
                         let emailDisplay = failedEmail
                             ? `<p style="background-color: #ffcccc; color: #b22222; padding: 8px; border-left: 4px solid #b22222; border-radius: 4px; font-weight: bold; margin-bottom: 5px;">Failed Email: ${failedEmail}</p>`
                             : '';
@@ -381,22 +384,23 @@
                         $('#emcustomAlertOverlay').show();
                         $('#EMcustomAlertModal').show().focus();
 
-                        // Prevent body scroll when modal is open
                         $('body').addClass('no-scroll');
 
-                        // Focus trapping
-                        $(document).on('keydown', function (event) {
+                        $(document).on('keydown.emcustomAlertTrap', function (event) {
                             if (event.key === 'Tab') {
-                                let focusableElements = $('#EMcustomAlertModal').find('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])').filter(':visible');
+                                let focusableElements = $('#EMcustomAlertModal')
+                                    .find('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+                                    .filter(':visible');
+
                                 let firstElement = focusableElements.first();
                                 let lastElement = focusableElements.last();
 
-                                if (event.shiftKey) { // Shift + Tab
+                                if (event.shiftKey) {
                                     if ($(document.activeElement).is(firstElement)) {
                                         lastElement.focus();
                                         event.preventDefault();
                                     }
-                                } else { // Tab
+                                } else {
                                     if ($(document.activeElement).is(lastElement)) {
                                         firstElement.focus();
                                         event.preventDefault();
@@ -410,28 +414,74 @@
                         console.log('Closing modal');
                         $('#emcustomAlertOverlay').hide();
                         $('#EMcustomAlertModal').hide();
-                        $(document).off('keydown');  // Remove the keydown event listener for focus trapping
-                        $('body').removeClass('no-scroll'); // Restore body scroll
+                        $(document).off('keydown.emcustomAlertTrap');
+                        $('body').removeClass('no-scroll');
                     }
 
-                    function EmailValidationCheck(emailFromValue) {
-                        console.log('Validating email:', emailFromValue);
-                        let domainlist = '<?= $domainlist ?>';
-                        let domains = domainlist.split(',');
-                        let emailDomain = emailFromValue.split('@')[1];
-                        return domains.includes(emailDomain);
-                    }
-                    
+                    function replaceClickHandler() {
+                        let $btn = $('#btnModalsaveAlert');
 
-                    var observer = new MutationObserver(function (mutations) {
-                        mutations.forEach(function (mutation) {
-                            replaceClickHandler();
-                        });
+                        if ($btn.length > 0 && $btn.is(':visible')) {
+                            if ($btn.data('emFromLimiterBound')) return;
+                            $btn.data('emFromLimiterBound', true);
+
+                            let events = $._data($btn[0], 'events');
+                            let handlerExists = events && events.click && events.click.length;
+
+                            if (handlerExists && originalClickHandler === null) {
+                                originalClickHandler = events.click[events.click.length - 1].handler;
+                            }
+
+                            $btn.off('click');
+
+                            $btn.on('click.emFromLimiter', function (e) {
+                                if (shouldExecuteOriginal) return;
+
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+
+                                console.log('Save Alert button clicked');
+
+                                let emailFromValue = $('select[name="email-from"]').val();
+                                let customCheck = EmailValidationCheck(emailFromValue);
+
+                                console.log('alerts emailFromValue', emailFromValue);
+                                console.log('alerts customCheck', customCheck);
+
+                                if (customCheck === false) {
+                                    if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
+                                        showModal(decodeHtml(displaymessage), emailFromValue);
+                                    }
+                                    return false;
+                                }
+
+                                if (typeof originalClickHandler === 'function') {
+                                    shouldExecuteOriginal = true;
+                                    try {
+                                        originalClickHandler.call(this, e);
+                                    } finally {
+                                        shouldExecuteOriginal = false;
+                                    }
+                                }
+                            });
+
+                            observer.disconnect();
+                        }
+                    }
+
+                    var observer = new MutationObserver(function () {
+                        replaceClickHandler();
                     });
 
                     function observeModal() {
-                        observer.observe(document.querySelector('#code_modal_table_update'), {
-                            childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']
+                        const modalTarget = document.querySelector('#code_modal_table_update');
+                        if (!modalTarget) return;
+
+                        observer.observe(modalTarget, {
+                            childList: true,
+                            subtree: true,
+                            attributes: true,
+                            attributeFilter: ['style', 'class']
                         });
                     }
 
@@ -446,29 +496,35 @@
                         observeModal();
                     });
 
-                    $('.emcustom-alert-close').click(function () {
-                        closeModal();
-                        if ('<?= $actionToTake ?>' === 'Notify') {
-                            originalClickHandler.call($('#btnModalsaveAlert')[0]);
-                        }
-                    });
-                    $('#emcustomAlertOverlay').click(function () {
-                        // Prevent closing the modal by clicking the overlay
-                        return false;
-                    });
-                    $(window).click(function (event) {
-                        if (event.target.id === 'EMcustomAlertModal') {
-                            if ('<?= $actionToTake ?>' === 'Notify') {
-                                //originalClickHandler.call($('#btnModalsaveAlert')[0]);
+                    $('.emcustom-alert-close')
+                        .off('click.emFromLimiterAlerts')
+                        .on('click.emFromLimiterAlerts', function () {
+                            closeModal();
+
+                            if (actionToTake === 'Notify' && typeof originalClickHandler === 'function') {
+                                shouldExecuteOriginal = true;
+                                try {
+                                    originalClickHandler.call($('#btnModalsaveAlert')[0]);
+                                } finally {
+                                    shouldExecuteOriginal = false;
+                                }
                             }
+                        });
+
+                    $('#emcustomAlertOverlay')
+                        .off('click.emFromLimiterAlerts')
+                        .on('click.emFromLimiterAlerts', function () {
+                            return false;
+                        });
+
+                    $(window).off('click.emFromLimiterAlerts').on('click.emFromLimiterAlerts', function (event) {
+                        if (event.target.id === 'EMcustomAlertModal') {
+                            return false;
                         }
                     });
 
-                    document.addEventListener('touchstart', function () {
-                    }, {passive: true});
-                    document.addEventListener('scroll', function () {
-                    }, {passive: true});
-
+                    document.addEventListener('touchstart', function () {}, {passive: true});
+                    document.addEventListener('scroll', function () {}, {passive: true});
                 });
             </script>
 			<?php

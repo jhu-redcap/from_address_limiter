@@ -14,14 +14,14 @@
   [
     {
       "key": "domain-list",
-      "name": "Domain List i.e.(@google.com,@yahoo.com)",
+      "name": "Allowed Domain List i.e.(@google.com,@yahoo.com)",
       "required": true,
       "type": "text"
     },
 
     {
       "key": "action-to-take",
-      "name": "Action to take on Save button click",
+      "name": "Action to take on button click",
       "required": true,
       "type": "radio",
       "choices": [
@@ -31,11 +31,11 @@
         },
         {
           "value": "Notify",
-          "name": "<span title=\"Display a notification, that when closed will continue with the Save\">Notify (warning)</span>"
+          "name": "<span title=\"Display a notification, that when closed will continue with the button action\">Notify (warning)</span>"
         },
         {
           "value": "Prevent",
-          "name": "<span title=\"Display a notification, that when closed will not perform the Save\">Prevent (block)</span>"
+          "name": "<span title=\"Display a notification, that when closed will not perform the button action\">Prevent (block)</span>"
         }
       ]
     },
