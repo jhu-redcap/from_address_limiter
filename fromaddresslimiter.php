@@ -39,7 +39,7 @@
         }
         function getNotifyMessage(){
             $defaultDisplayMessage =
-                    "<span style='color:red;'>The settings will be saved. However, it is strongly recommended that the 'From' address is associated with the institution hosting REDCap. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span>";
+                    "<span style='color:red;'>The settings will be saved. However, it is strongly recommended that the 'From' address is associated with the institution hosting REDCap [domain-list]. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span>";
 
             $displaymessage_raw = $this->getSystemSetting('notify-display-message');
             if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
@@ -52,7 +52,7 @@
         }
         function getPreventMessage(){
             $defaultDisplayMessage =
-                    "<span style='color:red;'>Unable to save settings. The selected 'From' address must be associated with the institution hosting REDCap. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span>";
+                    "<span style='color:red;'>Unable to save settings. The selected 'From' address must be associated with the institution hosting REDCap [domain-list]. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span>";
 
             $displaymessage_raw = $this->getSystemSetting('prevent-display-message');
             if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
