@@ -1,12 +1,17 @@
 {
   "name": "From Address Limiter",
-  "description": "This is an empty module for testing purposes.",
-  "documentation": "EM_FromAddressLimiter_ReadMe.doc",
+  "description": "The <b>From Address Limiter</b> module provides the ability to restrict “From” addresses used for ASI and Alerts/Notifications based on the institution’s email domain(s). For example, “University Health System” can limit “From” addresses to those having the <b>@university.edu</b> and/or <b>@university.mail.edu</b> domain.",
+  "documentation": "EM_FromAddressLimiter_ReadMe.pdf",
   "namespace": "JHU\\fromaddresslimiter",
   "authors": [
     {
       "name": "Michael Sherman Jr",
       "email": "msherm12@jh.edu",
+      "institution": "Johns Hopkins University"
+    },
+    {
+      "name": "Scott Carey",
+      "email": "scarey@jhu.edu",
       "institution": "Johns Hopkins University"
     }
   ],
@@ -14,14 +19,14 @@
   [
     {
       "key": "domain-list",
-      "name": "Allowed Domain List i.e.(@google.com,@yahoo.com)",
+      "name": "<b>Allowed Domain List (comma separated)</b></br>Example: <span style='color:red;'>@university.edu,@mail.university.edu</span>",
       "required": true,
       "type": "text"
     },
 
     {
       "key": "action-to-take",
-      "name": "Action to take on button click",
+      "name": "<b>Action to take when 'Save' is selected when configuring ASI's and Alerts/Notifications.</b>",
       "required": true,
       "type": "radio",
       "choices": [
@@ -31,20 +36,32 @@
         },
         {
           "value": "Notify",
-          "name": "<span title=\"Display a notification, that when closed will continue with the button action\">Notify (warning)</span>"
+          "name": "<span title=\"Notify user, but allow saving the configuration.\">Notify (warning)</span>"
         },
         {
           "value": "Prevent",
-          "name": "<span title=\"Display a notification, that when closed will not perform the button action\">Prevent (block)</span>"
+          "name": "<span title=\"Notify user and PREVENT saving the configuration.\">Prevent (block)</span>"
         }
       ]
     },
     {
       "key": "display-message",
-      "name": "Notification message",
-      "required": true,
-      "type": "rich-text"
+      "name": "<b>Custom Message (optional):</b></br>&nbsp&nbsp&nbsp&nbsp&nbspDefault 'Notify' Message (if custom message not provided):<ul><li><span style='color:red;'>The settings will be saved. However, it is strongly recommended that the 'From' address is associated with the institution hosting REDCap [domain-list]. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span></li></ul>",
+      "type": "rich-text",
+      "branchingLogic": {
+        "field": "action-to-take",
+        "value": "Notify"
+      }
+    },
+    {
+      "key": "prevent-display-message",
+      "name": "<b>Custom Message (optional):</b></br>&nbsp&nbsp&nbsp&nbsp&nbspDefault 'Prevent' Message (if custom message not provided):<ul><li><span style='color:red;'>Unable to save settings. The selected 'From' address must be associated with the institution hosting REDCap [domain-list]. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span></li></ul>",
+      "type": "rich-text",
+      "branchingLogic": {
+        "field": "action-to-take",
+        "value": "Prevent"
+      }
     }
   ],
-  "framework-version": 14
+  "framework-version": 15
 }

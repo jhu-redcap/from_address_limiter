@@ -27,7 +27,51 @@
 			$displaymessage = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
 			return $displaymessage;
 		}
+        function addDomainListToMessage($message)
+        {
+            $domains = (string) $this->getSystemSetting('domain-list');
 
+            if ($domains === '' || !str_contains($message, '[domain-list]')) {
+                return $message;
+            }
+
+            return str_replace('[domain-list]', $domains, $message);
+        }
+        function getNotifyMessage(){
+            $defaultDisplayMessage =
+                    "<span style='color:red;'>The settings will be saved. However, it is strongly recommended that the 'From' address is associated with the institution hosting REDCap. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span>";
+
+            $displaymessage_raw = $this->getSystemSetting('notify-display-message');
+            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
+                $displaymessage = $defaultDisplayMessage;
+            } else {
+                $displaymessage = $this->cleanRichText($displaymessage_raw);
+            }
+            $displaymessage = $this->addDomainListToMessage($displaymessage);
+            return $displaymessage;
+        }
+        function getPreventMessage(){
+            $defaultDisplayMessage =
+                    "<span style='color:red;'>Unable to save settings. The selected 'From' address must be associated with the institution hosting REDCap. Using a 'From' address from outside the hosting institution often results in emails being blocked by the recipient's email host (treated as 'spoofing'). For more information, contact your REDCap Administrator.</span>";
+
+            $displaymessage_raw = $this->getSystemSetting('prevent-display-message');
+            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
+                $displaymessage = $defaultDisplayMessage;
+            } else {
+                $displaymessage = $this->cleanRichText($displaymessage_raw);
+            }
+            $displaymessage = $this->addDomainListToMessage($displaymessage);
+            return $displaymessage;
+        }
+        function getDefaultDisplayMessage($actiontotake){
+            if ($actiontotake === 'Notify') {
+                return $this->getNotifyMessage();
+            }
+            if ($actiontotake === 'Prevent') {
+                return $this->getPreventMessage();
+            }
+            return "Default message or custom message not found.";
+        }
         public function redcap_data_entry_form($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
         {
             // Pull config the same way you do elsewhere
@@ -41,17 +85,7 @@
                 return;
             }
 
-            $defaultDisplayMessage =
-                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
-                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
-                    'in emails being blocked by the receiving email domain due to "spoofing".';
-
-            $displaymessage_raw = $this->getSystemSetting('display-message');
-            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
-                $displaymessage = $defaultDisplayMessage;
-            } else {
-                $displaymessage = $this->cleanRichText($displaymessage_raw);
-            }
+            $displaymessage = $this->getDefaultDisplayMessage($actionToTake);
 
             // Ensure modal HTML + module object exist on data entry pages too
             $this->initializeJavascriptModuleObject();
@@ -290,17 +324,7 @@
                 return;
             }
 
-            $defaultDisplayMessage =
-                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
-                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
-                    'in emails being blocked by the receiving email domain due to "spoofing".';
-
-            $displaymessage_raw = $this->getSystemSetting('display-message');
-            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
-                $displaymessage = $defaultDisplayMessage;
-            } else {
-                $displaymessage = $this->cleanRichText($displaymessage_raw);
-            }
+            $displaymessage = $this->getDefaultDisplayMessage($actionToTake);
 
 			$this->initializeJavascriptModuleObject();
 			include('modalcode.html');
@@ -541,17 +565,7 @@
                 return;
             }
 
-            $defaultDisplayMessage =
-                    'The selected "From" address must be associated with the institution hosting REDCap. ' .
-                    'Using an email address from outside the hosting institution as a "From" address will result ' .
-                    'in emails being blocked by the recipient\'s email host (treated as "spoofing").';
-
-            $displaymessage_raw = $this->getSystemSetting('display-message');
-            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
-                $displaymessage = $defaultDisplayMessage;
-            } else {
-                $displaymessage = $this->cleanRichText($displaymessage_raw);
-            }
+            $displaymessage = $this->getDefaultDisplayMessage($actionToTake);
 
             $this->initializeJavascriptModuleObject();
             include('modalcode.html');
@@ -746,151 +760,7 @@
             </script>
             <?php
         }
-		// Function handling Online Designer setup
-		private function handleOnlineDesigner_orig()
-		{
-			$domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
-			$actionToTake = $this->getSystemSetting('action-to-take');
-			$actionToTake = ($actionToTake === null || $actionToTake === '') ? 'Disabled' : $actionToTake;
-			
-			if ($actionToTake == 'Disabled') {
-				return;
-			}
-			$displaymessage = $this->cleanRichText($this->getSystemSetting('display-message'));
-			$this->initializeJavascriptModuleObject();
-			include('modalcode.html');
-			?>
 
-            <style>
-                #emcustomAlertOverlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background-color: rgba(0, 0, 0, 0.5); /* Dark overlay */
-                    z-index: 9998; /* Ensure it is above most elements */
-                    display: none;
-                }
-
-                #EMcustomAlertModal {
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    z-index: 9999; /* Ensure it is above the overlay */
-                    background: white;
-                    padding: 20px;
-                    box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.3);
-                    display: none;
-                }
-            </style>
-
-            <script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    console.log('Online Designer script loaded');
-                    let shouldExecuteOriginal = false;
-                    const mainButton = document.getElementById('choose_event_div_list');
-
-                    function attachClickHandler(button) {
-                        if (button) {
-                            console.log('Attaching click handler to button:', button);
-                            button.addEventListener('click', function(event) {
-                                clickHandlerWrapper(event, button);
-                            }, true);
-                        }
-                    }
-
-                    if (mainButton) {
-                        mainButton.addEventListener('click', function() {
-                            console.log('Main button clicked');
-                            setTimeout(function() {
-                                const popupDiv = document.getElementById('popupSetUpCondInvites');
-
-                                if (popupDiv) {
-                                    console.log('Popup div found, directly attaching handlers');
-                                    let secondaryButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget ui-priority-primary fs15 me-4')[0];
-                                    let savecopyButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget fs15')[1];
-
-                                    attachClickHandler(secondaryButton);
-                                    attachClickHandler(savecopyButton);
-                                } else {
-                                    console.error('Popup div not found');
-                                }
-                            }, 3000);
-                        });
-                    } else {
-                        console.error('Button with id "choose_event_div_list" not found.');
-                    }
-
-                    // Close button event listener
-                    $('.emcustom-alert-close').click(function() {
-                        console.log('Close button clicked');
-                        $('#EMcustomAlertModal').hide();
-                        $('#emcustomAlertOverlay').hide(); // Hide the overlay as well
-                        let secondaryButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget ui-priority-primary fs15 me-4')[0];
-                        let savecopyButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget fs15')[1];
-
-                        function handleButtonClick(button) {
-                            if (button) {
-                                console.log('Executing original button click:', button);
-                                shouldExecuteOriginal = true;
-                                button.click();
-                                shouldExecuteOriginal = false;
-                            }
-                        }
-
-                        if ('<?= $actionToTake ?>' === 'Notify') {
-                            handleButtonClick(secondaryButton);
-                            handleButtonClick(savecopyButton);
-                        }
-
-                        if ('<?= $actionToTake ?>' === 'Prevent') {
-                            // Do not click any button when actionToTake is 'Prevent'
-                            shouldExecuteOriginal = false;
-                        }
-                    });
-
-                    // Wrapper function to handle click event
-                    function clickHandlerWrapper(event, button) {
-                        console.log('Click handler wrapper triggered');
-                        if (!shouldExecuteOriginal) {
-                            let emailFromValue = $('select[id="email_sender"]').val();
-                            let actionToTake = '<?= $actionToTake ?>';
-                            let displaymessage = '<?= $displaymessage ?>';
-                            let checksPassed = EmailValidationCheck(emailFromValue);
-                            console.log('checksPassed',checksPassed);
-                            function decodeHtml(html) {
-                                var txt = document.createElement('textarea');
-                                txt.innerHTML = html;
-                                return txt.value;
-                            }
-                            if (checksPassed === false) {
-                                console.log('Email validation failed');
-                                event.preventDefault();
-                                event.stopImmediatePropagation();
-                                if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
-                                    $('#emcustomAlertMessage').html(decodeHtml(displaymessage) );
-                                    $('#emcustomAlertOverlay').show();
-                                    $('#EMcustomAlertModal').show().focus();
-                                }
-                                return;
-                            }
-                            shouldExecuteOriginal = true;
-                        }
-                    }
-
-                    function EmailValidationCheck(emailFromValue) {
-                        console.log('Validating email:', emailFromValue);
-                        let domainlist = '<?= $domainlist ?>';
-                        let domains = domainlist.split(',');
-                        let emailDomain = emailFromValue.split('@')[1];
-                        return domains.includes(emailDomain);
-                    }
-                });
-            </script>
-			<?php
-		}
         private function handleInviteParticipantsParticipantList()
         {
             $domainlist = $this->cleanDomainList($this->getSystemSetting('domain-list'));
@@ -903,17 +773,7 @@
                 return;
             }
 
-            $defaultDisplayMessage =
-                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
-                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
-                    'in emails being blocked by the receiving email domain due to "spoofing".';
-
-            $displaymessage_raw = $this->getSystemSetting('display-message');
-            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
-                $displaymessage = $defaultDisplayMessage;
-            } else {
-                $displaymessage = $this->cleanRichText($displaymessage_raw);
-            }
+            $displaymessage = $this->getDefaultDisplayMessage($actionToTake);
 
             $this->initializeJavascriptModuleObject();
             include('modalcode.html');
@@ -1126,18 +986,7 @@
                 return;
             }
 
-            $defaultDisplayMessage =
-                    'The selected "from" address must be associated with the institution hosting REDCap. ' .
-                    'Using email addresses from outside the hosting institution as a "from" address will result ' .
-                    'in emails being blocked by the receiving email domain due to "spoofing".';
-
-            $displaymessage_raw = $this->getSystemSetting('display-message');
-
-            if ($displaymessage_raw === null || trim((string)$displaymessage_raw) === '') {
-                $displaymessage = $defaultDisplayMessage;
-            } else {
-                $displaymessage = $this->cleanRichText($displaymessage_raw);
-            }
+            $displaymessage = $this->getDefaultDisplayMessage($actionToTake);
 
             $this->initializeJavascriptModuleObject();
             include('modalcode.html');
