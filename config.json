@@ -1,7 +1,7 @@
 {
   "name": "From Address Limiter",
   "description": "The <b>From Address Limiter</b> module provides the ability to restrict “From” addresses used for ASI and Alerts/Notifications based on the institution’s email domain(s). For example, “University Health System” can limit “From” addresses to those having the <b>@university.edu</b> and/or <b>@university.mail.edu</b> domain.",
-  "documentation": "EM_FromAddressLimiter_ReadMe.pdf",
+  "documentation": "EM_FromAddressLimiter_ReadMe.md",
   "namespace": "JHU\\fromaddresslimiter",
   "authors": [
     {
