@@ -595,18 +595,42 @@
                     display: none;
                 }
             </style>
-
             <script>
                 document.addEventListener('DOMContentLoaded', function () {
                     console.log('Online Designer script loaded');
 
-                    let shouldExecuteOriginal = false;
-                    let lastClickedButton = null;
+                    const actionToTake   = <?= json_encode($actionToTake) ?>;
+                    const displaymessage = <?= json_encode($displaymessage) ?>;
+                    const domainlist     = <?= json_encode($domainlist) ?>;
+
+                    let activeButton = null;
+                    let pendingNotifyContinue = false;
+
+                    // WeakSet is per DOM element and does not survive destroyed/recreated dialog buttons.
+                    // It allows exactly one REDCap click after Notify modal close.
+                    const allowOneNativeClick = new WeakSet();
 
                     function decodeHtml(html) {
-                        var txt = document.createElement('textarea');
+                        const txt = document.createElement('textarea');
                         txt.innerHTML = html;
                         return txt.value;
+                    }
+
+                    function escapeHtml(value) {
+                        return String(value ?? '').replace(/[&<>"']/g, function (c) {
+                            return {
+                                '&': '&amp;',
+                                '<': '&lt;',
+                                '>': '&gt;',
+                                '"': '&quot;',
+                                "'": '&#039;'
+                            }[c];
+                        });
+                    }
+
+                    function resetTransientState() {
+                        activeButton = null;
+                        pendingNotifyContinue = false;
                     }
 
                     function EmailValidationCheck(emailFromValue) {
@@ -617,8 +641,7 @@
 
                         const emailDomain = emailFromValue.slice(atPos + 1).trim().toLowerCase();
 
-                        let domainlist = <?= json_encode($domainlist) ?>;
-                        let domains = domainlist
+                        const domains = domainlist
                             .split(',')
                             .map(d => d.trim().toLowerCase())
                             .filter(Boolean)
@@ -634,12 +657,14 @@
                         return domains.includes(emailDomain);
                     }
 
-                    function showModal(displaymessage, failedEmail) {
-                        let emailDisplay = failedEmail
-                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">Invalid "From" Address: ${failedEmail}</p>`
+                    function showModal(msg, failedEmail) {
+                        const emailDisplay = failedEmail
+                            ? `<p style="background-color:#ffcccc;color:#b22222;padding:8px;border-left:4px solid #b22222;border-radius:4px;font-weight:bold;margin-bottom:5px;">
+                    Invalid "From" Address: ${escapeHtml(failedEmail)}
+               </p>`
                             : '';
 
-                        $('#emcustomAlertMessage').html(emailDisplay + displaymessage);
+                        $('#emcustomAlertMessage').html(emailDisplay + msg);
                         $('#emcustomAlertOverlay').show();
                         $('#EMcustomAlertModal').show().focus();
                         $('body').addClass('no-scroll');
@@ -649,105 +674,84 @@
                         $('#EMcustomAlertModal').hide();
                         $('#emcustomAlertOverlay').hide();
                         $('body').removeClass('no-scroll');
+
+                        // Always clear transient modal state on close.
+                        resetTransientState();
                     }
 
-                    function attachClickHandler(button) {
-                        if (!button) return;
-
-                        const $button = $(button);
-                        if ($button.data('emFromLimiterBound')) return;
-                        $button.data('emFromLimiterBound', true);
-
-                        console.log('Attaching click handler to button:', button);
-
-                        button.addEventListener('click', function (event) {
-                            clickHandlerWrapper(event, button);
-                        }, true);
+                    function getAsiDialogForElement(el) {
+                        const $dialog = $(el).closest('.ui-dialog');
+                        if ($dialog.find('#popupSetUpCondInvites:visible').length) {
+                            return $dialog;
+                        }
+                        return $();
                     }
 
-                    function attachPopupButtonHandlers() {
-                        const popupDiv = document.getElementById('popupSetUpCondInvites');
-                        if (!popupDiv) {
-                            console.error('Popup div not found');
+                    function isAsiSaveButton(el) {
+                        const $dialog = getAsiDialogForElement(el);
+                        if (!$dialog.length) return false;
+
+                        const label = $(el).text().replace(/\s+/g, ' ').trim().toLowerCase();
+
+                        // Avoid class/index dependency. Only intercept ASI Save actions.
+                        return label === 'save' || label.indexOf('save & copy') === 0;
+                    }
+
+                    function getCurrentVisibleAsiEmailSender() {
+                        // Validate the current visible ASI popup instance at click time.
+                        return $('#popupSetUpCondInvites:visible #email_sender:visible').val() || '';
+                    }
+
+                    // Capture phase so this runs before REDCap/jQuery UI button handlers.
+                    document.addEventListener('click', function (event) {
+                        const button = event.target.closest('button');
+                        if (!button || !isAsiSaveButton(button)) return;
+
+                        // Notify continuation: allow exactly one native REDCap click, then resume validation.
+                        if (allowOneNativeClick.has(button)) {
+                            allowOneNativeClick.delete(button);
+                            resetTransientState();
                             return;
                         }
 
-                        console.log('Popup div found, directly attaching handlers');
+                        const emailFromValue = getCurrentVisibleAsiEmailSender();
+                        const checksPassed = EmailValidationCheck(emailFromValue);
 
-                        let secondaryButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget ui-priority-primary fs15 me-4')[0];
-                        let savecopyButton = document.getElementsByClassName('ui-button ui-corner-all ui-widget fs15')[1];
+                        console.log('online designer emailfromvalue', emailFromValue);
+                        console.log('online designer checksPassed', checksPassed);
 
-                        attachClickHandler(secondaryButton);
-                        attachClickHandler(savecopyButton);
-                    }
-
-                    function clickHandlerWrapper(event, button) {
-                        console.log('Click handler wrapper triggered');
-
-                        if (!shouldExecuteOriginal) {
-                            lastClickedButton = button;
-
-                            let emailFromValue = $('select[id="email_sender"]').val();
-                            let actionToTake = <?= json_encode($actionToTake) ?>;
-                            let displaymessage = <?= json_encode($displaymessage) ?>;
-                            let checksPassed = EmailValidationCheck(emailFromValue);
-
-                            console.log('online designer emailfromvalue', emailFromValue);
-                            console.log('online designer checksPassed', checksPassed);
-
-                            if (checksPassed === false) {
-                                console.log('Email validation failed');
-                                event.preventDefault();
-                                event.stopImmediatePropagation();
-
-                                if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
-                                    showModal(decodeHtml(displaymessage), emailFromValue);
-                                }
-                                return;
-                            }
-
-                            shouldExecuteOriginal = true;
+                        if (checksPassed) {
+                            // Valid: do not touch the event; let REDCap proceed normally.
+                            resetTransientState();
+                            return;
                         }
-                    }
 
-                    // WITH EVENTS
-                    const mainButton = document.getElementById('choose_event_div_list');
-                    if (mainButton) {
-                        mainButton.addEventListener('click', function () {
-                            console.log('Main button clicked (events project)');
-                            setTimeout(function () {
-                                attachPopupButtonHandlers();
-                            }, 3000);
-                        });
-                    }
+                        // Invalid: block REDCap save/copy immediately.
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
 
-                    // WITHOUT EVENTS
-                    $(document).on('click', 'button[id^="autoInviteBtn-"]', function () {
-                        console.log('Automated Invitations button clicked (non-events project):', this.id);
-                        setTimeout(function () {
-                            attachPopupButtonHandlers();
-                        }, 3000);
-                    });
+                        activeButton = button;
+                        pendingNotifyContinue = (actionToTake === 'Notify');
+
+                        if (actionToTake === 'Prevent' || actionToTake === 'Notify') {
+                            showModal(decodeHtml(displaymessage), emailFromValue);
+                        }
+
+                        return false;
+                    }, true);
 
                     $('.emcustom-alert-close')
                         .off('click.emFromLimiterOnlineDesigner')
                         .on('click.emFromLimiterOnlineDesigner', function () {
-                            console.log('Close button clicked');
+                            const buttonToContinue = activeButton;
+                            const shouldContinue = pendingNotifyContinue && buttonToContinue;
+
                             closeModal();
 
-                            if (<?= json_encode($actionToTake) ?> === 'Notify' && lastClickedButton) {
-                                shouldExecuteOriginal = true;
-                                try {
-                                    lastClickedButton.click();
-                                } finally {
-                                    shouldExecuteOriginal = false;
-                                    lastClickedButton = null;
-                                }
-                            }
-
-                            if (<?= json_encode($actionToTake) ?> === 'Prevent') {
-                                shouldExecuteOriginal = false;
-                                lastClickedButton = null;
+                            if (actionToTake === 'Notify' && shouldContinue) {
+                                // Re-click only after modal acknowledgement, bypassing validation once.
+                                allowOneNativeClick.add(buttonToContinue);
+                                buttonToContinue.click();
                             }
                         });
 
@@ -756,8 +760,28 @@
                         .on('click.emFromLimiterOnlineDesigner', function () {
                             return false;
                         });
+
+                    // Reset state when the ASI dialog closes via X, Cancel, ESC, or jQuery UI close.
+                    $(document)
+                        .off('dialogclose.emFromLimiterOnlineDesigner', '#popupSetUpCondInvites')
+                        .on('dialogclose.emFromLimiterOnlineDesigner', '#popupSetUpCondInvites', function () {
+                            closeModal();
+                        });
+
+                    $(document)
+                        .off('click.emFromLimiterOnlineDesignerClose')
+                        .on('click.emFromLimiterOnlineDesignerClose', '.ui-dialog button', function () {
+                            const $dialog = getAsiDialogForElement(this);
+                            if (!$dialog.length) return;
+
+                            const label = $(this).text().replace(/\s+/g, ' ').trim().toLowerCase();
+                            if (label === 'cancel' || $(this).hasClass('ui-dialog-titlebar-close')) {
+                                closeModal();
+                            }
+                        });
                 });
             </script>
+
             <?php
         }
 
